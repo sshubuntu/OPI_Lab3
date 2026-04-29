@@ -213,7 +213,7 @@
         <exec executable="wsl" failonerror="false">
             <arg value="bash"/>
             <arg value="-lc"/>
-            <arg value="cd '${wsl.project.dir}' &amp;&amp; mkdir -p '${wsl.project.dir}/${tmp.dir}/team' &amp;&amp; revs=$(svn log -q -l 4 | sed -n 's/^r\([0-9]\+\).*/\1/p' | tail -n +2); for old_rev in $revs; do dst='${wsl.project.dir}/${tmp.dir}/team/r'$old_rev; svn export -r &quot;$old_rev&quot; . &quot;$dst&quot; --force &gt;/dev/null 2&gt;&amp;1 || continue; ${wsl.ant.executable} -f &quot;$dst/build.xml&quot; build &gt;/dev/null 2&gt;&amp;1 || continue; cp &quot;$dst&quot;/dist/*.jar '${wsl.project.dir}/${tmp.dir}/team/' 2&gt;/dev/null || true; done; if ls '${wsl.project.dir}/${tmp.dir}/team'/*.jar &gt;/dev/null 2&gt;&amp;1; then jar -cf '${wsl.project.dir}/${dist.dir}/team-revisions.zip' -C '${wsl.project.dir}/${tmp.dir}/team' .; else echo 'No previous revision JARs were collected. Skipping archive creation.'; fi"/>
+            <arg value="cd '${wsl.project.dir}' &amp;&amp; root='${wsl.project.dir}/${tmp.dir}/team'; mkdir -p &quot;$root&quot;; rev=&quot;$(svn info --show-item revision)&quot;; for i in 1 2 3; do old_rev=$((rev-i)); dst=&quot;$root/r$old_rev&quot;; svn export -r &quot;$old_rev&quot; . &quot;$dst&quot; --force &gt;/dev/null; ${wsl.ant.executable} -f &quot;$dst/build.xml&quot; build; cp &quot;$dst&quot;/dist/*.jar &quot;$root&quot;/; done; cd &quot;$root&quot; &amp;&amp; zip -j '${wsl.project.dir}/${dist.dir}/team-revisions.zip' ./*.jar -q"/>
         </exec>
     </target>
 
@@ -235,7 +235,7 @@
         <exec executable="wsl" failonerror="false">
             <arg value="bash"/>
             <arg value="-lc"/>
-            <arg value="cd '${wsl.project.dir}' &amp;&amp; if [ ! -d '${xml.report.dir}' ]; then echo 'JUnit report directory does not exist. Skipping report target.'; exit 0; fi; if ! ls '${xml.report.dir}'/*.xml &gt;/dev/null 2&gt;&amp;1; then echo 'No JUnit XML reports found. Skipping report target.'; exit 0; fi; svn add '${xml.report.dir}' --force &gt;/dev/null 2&gt;&amp;1 || true; svn commit -m '${svn.report.message}' '${xml.report.dir}' &gt;/dev/null 2&gt;&amp;1 || true"/>
+            <arg value="cd '${wsl.project.dir}' &amp;&amp; svn add '${xml.report.dir}' --force &amp;&amp; svn commit -m '${svn.report.message}' '${xml.report.dir}'"/>
         </exec>
     </target>
 
