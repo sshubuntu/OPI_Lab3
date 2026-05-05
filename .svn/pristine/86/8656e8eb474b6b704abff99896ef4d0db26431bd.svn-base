@@ -21,7 +21,6 @@ tmp.dir=${build.dir}/tmp
 checksums.dir=${tmp.dir}/checksums
 
 jar.name=${project.name}-${project.version}.jar
-war.name=${project.name}.war
 alt.jar.name=${project.name}-${project.version}-alt.jar
 
 javac.source=17
