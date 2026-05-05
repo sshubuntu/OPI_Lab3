@@ -1,0 +1,24 @@
+#SPDX-License-Identifier: MIT-0
+---
+- name: Stop WildFly
+  shell: >-
+    JAVA_OPTS="-Xmx1024m -Xms512m"
+    {{ wildfly_dir }}/bin/jboss-cli.sh
+    --connect
+    --controller=localhost:{{ wildfly_ports.mgmt_http }}
+    --command="shutdown"
+  ignore_errors: true
+  changed_when: true
+
+- name: Start WildFly
+  shell: >-
+    nohup {{ wildfly_dir }}/bin/standalone.sh
+    -Djboss.http.port={{ wildfly_ports.http }}
+    -Djboss.https.port={{ wildfly_ports.https }}
+    -Djboss.management.http.port={{ wildfly_ports.mgmt_http }}
+    -Djboss.management.https.port={{ wildfly_ports.mgmt_https }}
+    -b 0.0.0.0
+    -bmanagement 0.0.0.0
+    -Djboss.thread.pool.max.size=25
+    >{{ wildfly_log_file }} 2>&1 &
+  changed_when: true

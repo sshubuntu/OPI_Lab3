@@ -1,0 +1,4 @@
+#SPDX-License-Identifier: MIT-0
+---
+- name: restart wildfly
+  include_tasks: ../../deploy_on_servers/tasks/restart_service.yml

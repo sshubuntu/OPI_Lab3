@@ -1,0 +1,12 @@
+---
+- name: deploy
+  hosts: prod_servers
+  become: false
+
+  roles:
+    - role: postgres
+      when: ansible_os_family == "Debian"
+    - role: deploy_on_servers
+      when: ansible_os_family == "Debian"
+    - role: wildfly_selfsigned_tls
+      when: ansible_os_family == "Debian"

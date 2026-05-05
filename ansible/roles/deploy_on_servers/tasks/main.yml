@@ -1,0 +1,96 @@
+#SPDX-License-Identifier: MIT-0
+---
+- name: Install Java runtime on Debian hosts
+  apt:
+    name: openjdk-21-jdk
+    state: present
+  become: true
+
+- name: Check WildFly standalone is installed
+  stat:
+    path: "{{ wildfly_dir }}/bin/standalone.sh"
+  register: wildfly_standalone_stat
+
+- name: Build custom WildFly archive on controller
+  archive:
+    path: "{{ wildfly_local_dir }}/"
+    dest: "{{ wildfly_local_archive }}"
+    format: gz
+  delegate_to: localhost
+  become: false
+  when: not wildfly_standalone_stat.stat.exists
+
+- name: Upload WildFly archive to host
+  copy:
+    src: "{{ wildfly_local_archive }}"
+    dest: "{{ wildfly_home }}/wildfly-custom.tar.gz"
+    mode: "0644"
+  when: not wildfly_standalone_stat.stat.exists
+
+- name: Extract WildFly on host
+  unarchive:
+    src: "{{ wildfly_home }}/wildfly-custom.tar.gz"
+    dest: "{{ wildfly_home }}"
+    remote_src: true
+    creates: "{{ wildfly_dir }}/bin/standalone.sh"
+  when: not wildfly_standalone_stat.stat.exists
+
+- name: Ensure WildFly is running
+  shell: |
+    if pgrep -f '[j]boss-modules.jar' >/dev/null 2>&1; then
+      echo "__WF_ALREADY__"
+      exit 0
+    fi
+    nohup {{ wildfly_dir }}/bin/standalone.sh \
+      -Djboss.http.port={{ wildfly_ports.http }} \
+      -Djboss.https.port={{ wildfly_ports.https }} \
+      -Djboss.management.http.port={{ wildfly_ports.mgmt_http }} \
+      -Djboss.management.https.port={{ wildfly_ports.mgmt_https }} \
+      -b 0.0.0.0 \
+      -bmanagement 0.0.0.0 \
+      -Djboss.thread.pool.max.size=25 \
+      >{{ wildfly_log_file }} 2>&1 &
+    echo "__WF_STARTED__"
+  args:
+    executable: /bin/bash
+  register: wildfly_ensure
+  changed_when: "'__WF_STARTED__' in (wildfly_ensure.stdout | default(''))"
+
+- name: Ensure PointsDS datasource exists
+  shell: |
+    set -u
+    WF="{{ wildfly_dir }}/bin/jboss-cli.sh"
+    CTRL="localhost:{{ wildfly_ports.mgmt_http }}"
+    jboss() { "$WF" --connect --controller="$CTRL" --command="$1"; }
+    add_or_dup() {
+      local cmd="$1"
+      local out rc=0
+      out=$(jboss "$cmd" 2>&1) || rc=$?
+      printf '%s\n' "$out"
+      if [ "$rc" -eq 0 ]; then
+        echo "$out" | grep -q '"outcome" => "success"' && echo "__DS_CHANGED__"
+        return 0
+      fi
+      if echo "$out" | grep -qiE 'duplicate|wflyctl0212'; then return 0; fi
+      return "$rc"
+    }
+    DS='/subsystem=datasources/data-source=PointsDS:add(jndi-name=java:jboss/datasources/PointsDS,driver-name=postgresql,connection-url=jdbc:postgresql://{{ db_host }}:{{ db_port }}/{{ postgres_db_name }},user-name={{ postgres_db_user }},password={{ postgres_db_password }},enabled=true)'
+    add_or_dup "$DS"
+  args:
+    executable: /bin/bash
+  register: pointsds_ensure
+  changed_when: "'__DS_CHANGED__' in (pointsds_ensure.stdout | default(''))"
+
+- name: Ensure WAR artifact exists on controller
+  stat:
+    path: "{{ local_war_path }}"
+  delegate_to: localhost
+  become: false
+  register: war_file_check
+
+- name: Deploy WAR to WildFly
+  copy:
+    src: "{{ local_war_path }}"
+    dest: "{{ wildfly_deployments_dir }}/WEB_Lab3.war"
+    mode: "0644"
+  notify: restart wildfly

@@ -1,0 +1,41 @@
+---
+- name: Install PostgreSQL packages
+  apt:
+    name:
+      - postgresql
+      - postgresql-contrib
+      - python3-psycopg2
+    state: present
+  become: true
+
+- name: Ensure PostgreSQL is running and enabled
+  service:
+    name: postgresql
+    state: started
+    enabled: true
+  become: true
+
+- name: Check PostgreSQL user existence
+  command: sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='{{ postgres_db_user }}'"
+  register: postgres_user_exists
+  become: true
+
+- name: Create PostgreSQL user when missing
+  command: sudo -u postgres psql -c "CREATE USER {{ postgres_db_user }} WITH PASSWORD '{{ postgres_db_password }}';"
+  become: true
+  when: postgres_user_exists.stdout | trim != "1"
+
+- name: Check PostgreSQL database existence
+  command: sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='{{ postgres_db_name }}'"
+  register: postgres_db_exists
+  become: true
+
+- name: Create PostgreSQL database when missing
+  command: sudo -u postgres createdb -O {{ postgres_db_user }} {{ postgres_db_name }}
+  become: true
+  when: postgres_db_exists.stdout | trim != "1"
+
+- name: Ensure PostgreSQL user has database privileges
+  command: sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE {{ postgres_db_name }} TO {{ postgres_db_user }};"
+  become: true
+

@@ -1,0 +1,49 @@
+#SPDX-License-Identifier: MIT-0
+---
+- name: Ensure self-signed keystore exists
+  command: >-
+    keytool -genkeypair
+    -alias {{ tls_cert_alias }}
+    -keyalg RSA
+    -keysize 2048
+    -validity 3650
+    -dname "{{ tls_cert_dname }}"
+    -keystore {{ tls_keystore_path }}
+    -storetype PKCS12
+    -storepass {{ tls_keystore_password }}
+    -keypass {{ tls_keystore_password }}
+    -noprompt
+  args:
+    creates: "{{ tls_keystore_path }}"
+  notify: restart wildfly
+
+- name: Configure Elytron TLS and HTTPS listener
+  shell: |
+    set -u
+    WF="{{ wildfly_dir }}/bin/jboss-cli.sh"
+    CTRL="localhost:{{ wildfly_ports.mgmt_http }}"
+    jboss() { "$WF" --connect --controller="$CTRL" --command="$1"; }
+    add_or_dup() {
+      local cmd="$1"
+      local out rc=0
+      out=$(jboss "$cmd" 2>&1) || rc=$?
+      printf '%s\n' "$out"
+      if [ "$rc" -eq 0 ]; then
+        echo "$out" | grep -q '"outcome" => "success"' && echo "__WF_TLS_CHANGED__"
+        return 0
+      fi
+      if echo "$out" | grep -qiE 'duplicate|wflyctl0212'; then return 0; fi
+      return "$rc"
+    }
+    add_or_dup "/subsystem=elytron/key-store=weblabKS:add(path={{ tls_keystore_path }},type=PKCS12,credential-reference={clear-text={{ tls_keystore_password }}})"
+    add_or_dup "/subsystem=elytron/key-manager=weblabKM:add(key-store=weblabKS,credential-reference={clear-text={{ tls_keystore_password }}})"
+    add_or_dup "/subsystem=elytron/server-ssl-context=weblabSSC:add(key-manager=weblabKM,protocols=[TLSv1.2,TLSv1.3])"
+    lo=$(jboss "/subsystem=undertow/server=default-server/https-listener=https:write-attribute(name=ssl-context,value=weblabSSC)" 2>&1) || lrc=$?
+    printf '%s\n' "$lo"
+    if [ "${lrc:-0}" -ne 0 ]; then exit "$lrc"; fi
+    echo "$lo" | grep -q '"outcome" => "success"' && echo "__WF_TLS_CHANGED__"
+  args:
+    executable: /bin/bash
+  register: wildfly_tls_cli
+  changed_when: "'__WF_TLS_CHANGED__' in (wildfly_tls_cli.stdout | default(''))"
+  notify: restart wildfly

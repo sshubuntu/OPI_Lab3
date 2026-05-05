@@ -48,9 +48,33 @@
         <jar destfile="${dist.dir}/${jar.name}" manifest="${manifest.file}" basedir="${classes.dir}"/>
     </target>
 
+    <target name="war" depends="compile" description="Compile and package deployable WAR">
+        <war destfile="${dist.dir}/${war.name}" webxml="${web.dir}/WEB-INF/web.xml">
+            <fileset dir="${web.dir}">
+                <exclude name="WEB-INF/web.xml"/>
+            </fileset>
+            <classes dir="${classes.dir}"/>
+            <lib dir="${lib.dir}" includes="**/*.jar"/>
+        </war>
+    </target>
+
     <target name="clean" description="Remove build artifacts">
         <delete dir="${build.dir}"/>
         <delete dir="${dist.dir}"/>
+    </target>
+
+    <target name="deploy" depends="war" description="Build WAR and run Ansible deploy">
+        <exec executable="bash" failonerror="true">
+            <arg value="-lc"/>
+            <arg value="cd ${deploy.project.root}/ansible &amp;&amp; ansible-galaxy collection install community.postgresql &amp;&amp; ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i inventory.ini deploy.yml"/>
+        </exec>
+    </target>
+
+    <target name="deploy-and-verify" depends="deploy" description="Deploy then check HTTP on server">
+        <exec executable="bash" failonerror="true">
+            <arg value="-lc"/>
+            <arg value="ssh ${deploy.ssh.user}@${deploy.host} 'sleep ${deploy.verify.waitsec}; curl -f http://127.0.0.1:${deploy.http.port}${deploy.context.path}'"/>
+        </exec>
     </target>
 
     <target name="test-runner" depends="build,detect-tests" if="test.src.present">
